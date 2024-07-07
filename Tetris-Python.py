@@ -18,6 +18,8 @@ VERDE = (0, 255, 0)
 AZUL = (0, 0, 255)
 CINZA = (169, 169, 169)
 AMARELO = (255, 255, 0)
+CINZA_ESCURO = (100, 100, 100)
+TRANSPARENTE = (0, 0, 0, 180)  # Transparência
 
 # Dimensões dos blocos
 tamanho_bloco = 30
@@ -154,28 +156,80 @@ def tela_fim():
         pygame.display.update()
         clock.tick(10)
 
+def tela_pausa():
+    rodando = True
+    opcao_selecionada = 0
+    while rodando:
+        # Criar uma superfície semi-transparente para a tela de pausa
+        tela_pausa_fundo = pygame.Surface((400, 200), pygame.SRCALPHA)
+        tela_pausa_fundo.fill(TRANSPARENTE)
+        tela.blit(tela_pausa_fundo, (largura_tela // 2 - 200, altura_tela // 2 - 100))
+
+        pygame.draw.rect(tela, VERMELHO, (largura_tela // 2 - 200, altura_tela // 2 - 100, 400, 200), 3)
+
+        desenhar_texto(tela, "PAUSADO", 60, AMARELO, largura_tela / 2, altura_tela / 2 - 50)
+        desenhar_texto(tela, "Continuar", 30, BRANCO if opcao_selecionada == 0 else CINZA_ESCURO, largura_tela / 2, altura_tela / 2 - 10)
+        desenhar_texto(tela, "Reiniciar", 30, BRANCO if opcao_selecionada == 1 else CINZA_ESCURO, largura_tela / 2, altura_tela / 2 + 30)
+        desenhar_texto(tela, "Sair", 30, BRANCO if opcao_selecionada == 2 else CINZA_ESCURO, largura_tela / 2, altura_tela / 2 + 70)
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                rodando = False
+                pygame.quit()
+                return False, False, False
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_UP:
+                    opcao_selecionada = (opcao_selecionada - 1) % 3
+                if evento.key == pygame.K_DOWN:
+                    opcao_selecionada = (opcao_selecionada + 1) % 3
+                if evento.key == pygame.K_RETURN:
+                    if opcao_selecionada == 0:
+                        return True, False, False  # Continuar
+                    if opcao_selecionada == 1:
+                        return False, True, False  # Reiniciar
+                    if opcao_selecionada == 2:
+                        return False, False, True  # Sair
+
+        pygame.display.update()
+        clock.tick(10)
+
 # Loop principal do jogo
-def main():
-    while True:
-        if not tela_entrada():
-            pygame.quit()
-            return
+def jogo(reiniciar=False):
+    tabuleiro = [[PRETO for _ in range(largura_jogo // tamanho_bloco)] for _ in range(altura_tela // tamanho_bloco)]
+    peca_atual = Peca(largura_jogo // (2 * tamanho_bloco), 0)
+    peca_proxima = Peca(largura_jogo // (2 * tamanho_bloco), 0)
+    contador_tempo = 0
+    pontos = 0
+    pausado = False
+    movimento_continuo = {'esquerda': False, 'direita': False, 'baixo': False}
+    ultimo_movimento = {'esquerda': 0, 'direita': 0, 'baixo': 0}
+    intervalo_movimento = 100  # milissegundos
 
-        tabuleiro = [[PRETO for _ in range(largura_jogo // tamanho_bloco)] for _ in range(altura_tela // tamanho_bloco)]
+    rodando = True
+    while rodando:
+        tela.fill(PRETO)
+        contador_tempo += clock.get_rawtime()
+        clock.tick()
 
-        peca_atual = Peca(largura_jogo // (2 * tamanho_bloco), 0)
-        peca_proxima = Peca(largura_jogo // (2 * tamanho_bloco), 0)
-        contador_tempo = 0
-        pontos = 0
-        pausado = False
+        if not pausado:
+            tempo_atual = pygame.time.get_ticks()
+            if movimento_continuo['esquerda'] and tempo_atual - ultimo_movimento['esquerda'] > intervalo_movimento:
+                peca_atual.x -= 1
+                if verificar_colisao(tabuleiro, peca_atual):
+                    peca_atual.x += 1
+                ultimo_movimento['esquerda'] = tempo_atual
+            if movimento_continuo['direita'] and tempo_atual - ultimo_movimento['direita'] > intervalo_movimento:
+                peca_atual.x += 1
+                if verificar_colisao(tabuleiro, peca_atual):
+                    peca_atual.x -= 1
+                ultimo_movimento['direita'] = tempo_atual
+            if movimento_continuo['baixo'] and tempo_atual - ultimo_movimento['baixo'] > intervalo_movimento:
+                peca_atual.y += 1
+                if verificar_colisao(tabuleiro, peca_atual):
+                    peca_atual.y -= 1
+                ultimo_movimento['baixo'] = tempo_atual
 
-        rodando = True
-        while rodando:
-            tela.fill(PRETO)
-            contador_tempo += clock.get_rawtime()
-            clock.tick()
-
-            if not pausado and contador_tempo / 1000 > velocidade_jogo:
+            if contador_tempo / 1000 > velocidade_jogo:
                 peca_atual.y += 1
                 if verificar_colisao(tabuleiro, peca_atual):
                     peca_atual.y -= 1
@@ -183,52 +237,86 @@ def main():
                     peca_atual = peca_proxima
                     peca_proxima = Peca(largura_jogo // (2 * tamanho_bloco), 0)
                     if verificar_colisao(tabuleiro, peca_atual):
-                        rodando = False
+                        return False, False, False  # Retornar à tela de fim de jogo
                     pontos += limpar_linhas(tabuleiro)
                 contador_tempo = 0
 
-            for evento in pygame.event.get():
-                if evento.type == pygame.QUIT:
-                    rodando = False
-                    pygame.quit()
-                    return
-                if evento.type == pygame.KEYDOWN:
-                    if evento.key == pygame.K_RETURN:
-                        pausado = not pausado
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                rodando = False
+                pygame.quit()
+                return False, False, False
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_RETURN:
+                    pausado = not pausado
+                    if pausado:
+                        continuar, reiniciar, sair = tela_pausa()
+                        if sair:
+                            return False, False, True  # Voltar para a tela de entrada
+                        if reiniciar:
+                            return True, True, False  # Reiniciar o jogo atual
+                        pausado = not continuar
 
-                    if not pausado:
-                        if evento.key == pygame.K_LEFT:
-                            peca_atual.x -= 1
-                            if verificar_colisao(tabuleiro, peca_atual):
-                                peca_atual.x += 1
-                        if evento.key == pygame.K_RIGHT:
+                if not pausado:
+                    if evento.key == pygame.K_LEFT:
+                        movimento_continuo['esquerda'] = True
+                        peca_atual.x -= 1
+                        if verificar_colisao(tabuleiro, peca_atual):
                             peca_atual.x += 1
-                            if verificar_colisao(tabuleiro, peca_atual):
-                                peca_atual.x -= 1
-                        if evento.key == pygame.K_DOWN:
-                            peca_atual.y += 1
-                            if verificar_colisao(tabuleiro, peca_atual):
-                                peca_atual.y -= 1
-                        if evento.key == pygame.K_UP:
-                            peca_atual.rotacionar()
-                            if verificar_colisao(tabuleiro, peca_atual):
-                                for _ in range(3):
-                                    peca_atual.rotacionar()
+                        ultimo_movimento['esquerda'] = pygame.time.get_ticks()
+                    if evento.key == pygame.K_RIGHT:
+                        movimento_continuo['direita'] = True
+                        peca_atual.x += 1
+                        if verificar_colisao(tabuleiro, peca_atual):
+                            peca_atual.x -= 1
+                        ultimo_movimento['direita'] = pygame.time.get_ticks()
+                    if evento.key == pygame.K_DOWN:
+                        movimento_continuo['baixo'] = True
+                        peca_atual.y += 1
+                        if verificar_colisao(tabuleiro, peca_atual):
+                            peca_atual.y -= 1
+                        ultimo_movimento['baixo'] = pygame.time.get_ticks()
+                    if evento.key == pygame.K_UP:
+                        peca_atual.rotacionar()
+                        if verificar_colisao(tabuleiro, peca_atual):
+                            for _ in range(3):
+                                peca_atual.rotacionar()
+            if evento.type == pygame.KEYUP:
+                if evento.key == pygame.K_LEFT:
+                    movimento_continuo['esquerda'] = False
+                if evento.key == pygame.K_RIGHT:
+                    movimento_continuo['direita'] = False
+                if evento.key == pygame.K_DOWN:
+                    movimento_continuo['baixo'] = False
 
-            desenhar_tabuleiro(tela, tabuleiro)
-            peca_atual.desenhar(tela)
-            desenhar_texto(tela, f"Pontos: {pontos}", 30, BRANCO, largura_jogo + 100, 30)
-            desenhar_texto(tela, "Próxima peça:", 30, BRANCO, largura_jogo + 100, 120)
-            desenhar_proxima_peca(tela, peca_proxima)
-            desenhar_layout(tela)
+        desenhar_tabuleiro(tela, tabuleiro)
+        peca_atual.desenhar(tela)
+        desenhar_texto(tela, f"Pontos: {pontos}", 30, BRANCO, largura_jogo + 100, 30)
+        desenhar_texto(tela, "Próxima peça:", 30, BRANCO, largura_jogo + 100, 120)
+        desenhar_proxima_peca(tela, peca_proxima)
+        desenhar_layout(tela)
 
-            if pausado:
-                desenhar_texto(tela, "PAUSADO", 60, AMARELO, largura_tela / 2, altura_tela / 2)
+        pygame.display.update()
 
-            pygame.display.update()
+    return True, False, False
 
-        if not tela_fim():
-            break
+# Loop principal
+def main():
+    while True:
+        if not tela_entrada():
+            pygame.quit()
+            return
+
+        continuar, reiniciar, sair_para_entrada = jogo()
+        while reiniciar:
+            continuar, reiniciar, _ = jogo(reiniciar=True)
+
+        if sair_para_entrada:
+            continue
+
+        if not continuar and not reiniciar:
+            if not tela_fim():
+                break
 
 if __name__ == "__main__":
     main()
